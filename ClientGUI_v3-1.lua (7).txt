@@ -1,0 +1,652 @@
+--------------------------------------------------------------------------------
+-- ClientGUI_v3.lua
+-- LOẠI: LocalScript
+-- ĐẶT TẠI: StarterPlayer > StarterPlayerScripts
+--
+-- Thêm: thanh [ ▼ MUSIC ] để đóng/mở khu Music Player gọn gàng.
+-- Playlist đã điền ID thật (Raining Tacos xác nhận từ nguồn chính thức Parry Gripp;
+-- C00lkidd lấy từ nguồn phổ biến nhất tìm được — bạn nên tự verify lại trên
+-- create.roblox.com trước khi dùng vì các trang liệt kê ID nhạc hay đổi/die theo thời gian).
+--------------------------------------------------------------------------------
+
+-- // Services
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
+local MarketplaceService = game:GetService("MarketplaceService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- // Player
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- // RemoteEvent cho chế độ SERVER (do ServerMusic.lua tạo)
+local musicRemote = ReplicatedStorage:WaitForChild("MusicRequest", 10)
+
+local function sendMusic(action, payload)
+	if musicRemote then
+		musicRemote:FireServer(action, payload)
+	else
+		warn("[ClientGUI] Không tìm thấy MusicRequest. Đảm bảo ServerMusic.lua đã chạy ở server.")
+	end
+end
+
+-- // Helper: Tween position
+local function tweenPos(obj, pos, style, direction, duration)
+	obj:TweenPosition(pos, direction or "Out", style or "Linear", duration or 0.4, false)
+end
+
+-- // Helper: Create tween
+local function createTween(obj, info, props)
+	return TweenService:Create(obj, info, props)
+end
+
+--------------------------------------------------------------------------------
+-- PLAYLIST — ID đã điền, nhưng NÊN TỰ KIỂM TRA LẠI trước khi dùng lâu dài
+-- (ID nhạc cộng đồng hay bị xoá/đổi quyền sử dụng theo thời gian)
+--------------------------------------------------------------------------------
+local PLAYLIST = {
+	{ name = "Raining Tacos (Parry Gripp, official)", id = "142376088" },
+	{ name = "C00lkidd Chase Theme",                  id = "78534559289195" },
+}
+
+--------------------------------------------------------------------------------
+-- MAIN GUI (Classic Style)
+--------------------------------------------------------------------------------
+local gui = Instance.new("ScreenGui")
+gui.Name = "ExecutorGUI"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 80, 0, 24)
+toggleButton.Position = UDim2.new(0, 6, 0, 6)
+toggleButton.Text = "[ MENU ]"
+toggleButton.Font = Enum.Font.Code
+toggleButton.TextSize = 12
+toggleButton.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+toggleButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+toggleButton.BorderSizePixel = 2
+toggleButton.TextColor3 = Color3.new(0, 0, 0)
+toggleButton.Parent = gui
+
+-- // Chiều cao frame: thu gọn khi Music Player đóng, mở rộng khi bung ra
+local FRAME_H_COLLAPSED = 260
+local FRAME_H_EXPANDED  = 400
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 340, 0, FRAME_H_COLLAPSED)
+frame.Position = UDim2.new(0.5, -170, 0.5, -FRAME_H_COLLAPSED / 2)
+frame.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+frame.BorderSizePixel = 2
+frame.Active = true
+frame.Draggable = true
+frame.Visible = true
+frame.ClipsDescendants = true
+frame.Parent = gui
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 24)
+titleBar.BackgroundColor3 = Color3.fromRGB(0, 0, 128)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 1, 0)
+title.Position = UDim2.new(0, 6, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "ERROR422 - FE BYPASS v1.0"
+title.Font = Enum.Font.Code
+title.TextSize = 13
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 20, 0, 18)
+closeBtn.Position = UDim2.new(1, -24, 0, 3)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.Code
+closeBtn.TextSize = 12
+closeBtn.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+closeBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+closeBtn.BorderSizePixel = 2
+closeBtn.TextColor3 = Color3.new(0, 0, 0)
+closeBtn.Parent = titleBar
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -12, 0, 18)
+statusLabel.Position = UDim2.new(0, 6, 0, 28)
+statusLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+statusLabel.BorderColor3 = Color3.fromRGB(100, 100, 100)
+statusLabel.BorderSizePixel = 1
+statusLabel.Text = "> Ready."
+statusLabel.Font = Enum.Font.Code
+statusLabel.TextSize = 11
+statusLabel.TextColor3 = Color3.fromRGB(0, 128, 0)
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = frame
+
+local inputBox = Instance.new("TextBox")
+inputBox.Size = UDim2.new(1, -12, 0, 150)
+inputBox.Position = UDim2.new(0, 6, 0, 52)
+inputBox.PlaceholderText = '-- enter script here'
+inputBox.Text = 'print("hello")'
+inputBox.ClearTextOnFocus = false
+inputBox.TextColor3 = Color3.fromRGB(0, 255, 0)
+inputBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+inputBox.BorderColor3 = Color3.fromRGB(100, 100, 100)
+inputBox.BorderSizePixel = 2
+inputBox.TextWrapped = true
+inputBox.Font = Enum.Font.Code
+inputBox.TextSize = 14
+inputBox.TextXAlignment = Enum.TextXAlignment.Left
+inputBox.TextYAlignment = Enum.TextYAlignment.Top
+inputBox.Parent = frame
+
+local function makeButton(text, x, y, w, h, bgColor)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, w or 80, 0, h or 26)
+	btn.Position = UDim2.new(0, x, 0, y)
+	btn.Text = text
+	btn.Font = Enum.Font.Code
+	btn.TextSize = 13
+	btn.BackgroundColor3 = bgColor or Color3.fromRGB(192, 192, 192)
+	btn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	btn.BorderSizePixel = 2
+	btn.TextColor3 = Color3.new(0, 0, 0)
+	btn.Parent = frame
+	return btn
+end
+
+local executeButton = makeButton("[ EXEC ]",   6,  210, 88, 26, Color3.fromRGB(192, 192, 192))
+local clearButton   = makeButton("[ CLEAR ]", 100, 210, 88, 26, Color3.fromRGB(192, 192, 192))
+local injectButton  = makeButton("[ INJECT ]",194, 210, 96, 26, Color3.fromRGB(192, 192, 192))
+
+--------------------------------------------------------------------------------
+-- MUSIC SECTION TOGGLE (thanh đóng/mở)
+--------------------------------------------------------------------------------
+local musicToggleBar = Instance.new("TextButton")
+musicToggleBar.Size = UDim2.new(1, -12, 0, 20)
+musicToggleBar.Position = UDim2.new(0, 6, 0, 244)
+musicToggleBar.BackgroundColor3 = Color3.fromRGB(0, 0, 128)
+musicToggleBar.BorderSizePixel = 0
+musicToggleBar.Text = " ▼  MUSIC PLAYER"
+musicToggleBar.Font = Enum.Font.Code
+musicToggleBar.TextSize = 11
+musicToggleBar.TextColor3 = Color3.new(1, 1, 1)
+musicToggleBar.TextXAlignment = Enum.TextXAlignment.Left
+musicToggleBar.AutoButtonColor = false
+musicToggleBar.Parent = frame
+
+-- // Container cho toàn bộ phần music (để show/hide gọn 1 phát)
+local musicContainer = Instance.new("Frame")
+musicContainer.Size = UDim2.new(1, -12, 0, 130)
+musicContainer.Position = UDim2.new(0, 6, 0, 266)
+musicContainer.BackgroundTransparency = 1
+musicContainer.Visible = false -- // mặc định đóng
+musicContainer.Parent = frame
+
+-- // Mode toggle
+local musicMode = "local"
+local modeBtn = Instance.new("TextButton")
+modeBtn.Size = UDim2.new(0, 150, 0, 24)
+modeBtn.Position = UDim2.new(0, 0, 0, 0)
+modeBtn.Text = "[ MODE: LOCAL ]"
+modeBtn.Font = Enum.Font.Code
+modeBtn.TextSize = 12
+modeBtn.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+modeBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+modeBtn.BorderSizePixel = 2
+modeBtn.TextColor3 = Color3.new(0, 0, 0)
+modeBtn.Parent = musicContainer
+
+-- // ID input
+local musicIdBox = Instance.new("TextBox")
+musicIdBox.Size = UDim2.new(0, 178, 0, 24)
+musicIdBox.Position = UDim2.new(0, 156, 0, 0)
+musicIdBox.PlaceholderText = "audio ID..."
+musicIdBox.Text = ""
+musicIdBox.ClearTextOnFocus = false
+musicIdBox.TextColor3 = Color3.new(0, 0, 0)
+musicIdBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+musicIdBox.BorderColor3 = Color3.fromRGB(100, 100, 100)
+musicIdBox.BorderSizePixel = 2
+musicIdBox.Font = Enum.Font.Code
+musicIdBox.TextSize = 12
+musicIdBox.TextXAlignment = Enum.TextXAlignment.Left
+musicIdBox.Parent = musicContainer
+
+-- // Now playing label
+local nowPlayingLabel = Instance.new("TextLabel")
+nowPlayingLabel.Size = UDim2.new(1, 0, 0, 16)
+nowPlayingLabel.Position = UDim2.new(0, 0, 0, 28)
+nowPlayingLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+nowPlayingLabel.BorderColor3 = Color3.fromRGB(100, 100, 100)
+nowPlayingLabel.BorderSizePixel = 1
+nowPlayingLabel.Text = "♪ No track loaded."
+nowPlayingLabel.Font = Enum.Font.Code
+nowPlayingLabel.TextSize = 11
+nowPlayingLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+nowPlayingLabel.TextXAlignment = Enum.TextXAlignment.Left
+nowPlayingLabel.Parent = musicContainer
+
+-- // Control buttons
+local loadMusicBtn  = Instance.new("TextButton")
+local playPauseBtn  = Instance.new("TextButton")
+local stopMusicBtn  = Instance.new("TextButton")
+local volDownBtn    = Instance.new("TextButton")
+local volUpBtn      = Instance.new("TextButton")
+local volLabel      = Instance.new("TextLabel")
+
+local function setupCtrlBtn(btn, text, x, w)
+	btn.Size = UDim2.new(0, w, 0, 26)
+	btn.Position = UDim2.new(0, x, 0, 50)
+	btn.Text = text
+	btn.Font = Enum.Font.Code
+	btn.TextSize = 13
+	btn.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+	btn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	btn.BorderSizePixel = 2
+	btn.TextColor3 = Color3.new(0, 0, 0)
+	btn.Parent = musicContainer
+end
+
+setupCtrlBtn(loadMusicBtn, "[ LOAD ]", 0, 78)
+setupCtrlBtn(playPauseBtn, "[ PLAY ]", 82, 78)
+setupCtrlBtn(stopMusicBtn, "[ STOP ]", 164, 78)
+setupCtrlBtn(volDownBtn, "-", 246, 22)
+setupCtrlBtn(volUpBtn, "+", 270, 22)
+
+volLabel.Size = UDim2.new(0, 36, 0, 26)
+volLabel.Position = UDim2.new(0, 294, 0, 50)
+volLabel.BackgroundColor3 = Color3.fromRGB(192, 192, 192)
+volLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
+volLabel.BorderSizePixel = 2
+volLabel.Text = "50%"
+volLabel.Font = Enum.Font.Code
+volLabel.TextSize = 10
+volLabel.TextColor3 = Color3.new(0, 0, 0)
+volLabel.Parent = musicContainer
+
+-- // Playlist title
+local playlistTitle = Instance.new("TextLabel")
+playlistTitle.Size = UDim2.new(1, 0, 0, 14)
+playlistTitle.Position = UDim2.new(0, 0, 0, 82)
+playlistTitle.BackgroundColor3 = Color3.fromRGB(0, 0, 128)
+playlistTitle.BorderSizePixel = 0
+playlistTitle.Text = " PLAYLIST"
+playlistTitle.Font = Enum.Font.Code
+playlistTitle.TextSize = 11
+playlistTitle.TextColor3 = Color3.new(1, 1, 1)
+playlistTitle.TextXAlignment = Enum.TextXAlignment.Left
+playlistTitle.Parent = musicContainer
+
+-- // Scroll frame chứa danh sách bài hát
+local playlistFrame = Instance.new("ScrollingFrame")
+playlistFrame.Size = UDim2.new(1, 0, 0, 48)
+playlistFrame.Position = UDim2.new(0, 0, 0, 98)
+playlistFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+playlistFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+playlistFrame.BorderSizePixel = 2
+playlistFrame.ScrollBarThickness = 8
+playlistFrame.CanvasSize = UDim2.new(0, 0, 0, #PLAYLIST * 26)
+playlistFrame.Parent = musicContainer
+
+--------------------------------------------------------------------------------
+-- MUSIC LOGIC (2 chế độ: LOCAL / SERVER)
+--------------------------------------------------------------------------------
+local currentSound = nil
+local currentVolume = 0.5
+local isPlaying = false
+
+local function stopLocalSound()
+	if currentSound then
+		currentSound:Stop()
+		currentSound:Destroy()
+		currentSound = nil
+	end
+end
+
+local function loadTrack(id)
+	if not id or not tostring(id):match("^%d+$") then
+		nowPlayingLabel.Text = "♪ Invalid audio ID."
+		nowPlayingLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+		return
+	end
+
+	if musicMode == "local" then
+		stopLocalSound()
+		local s = Instance.new("Sound")
+		s.SoundId = "rbxassetid://" .. id
+		s.Volume = currentVolume
+		s.Looped = true
+		s.Parent = playerGui
+		currentSound = s
+		s:Play()
+
+		nowPlayingLabel.Text = "♪ [LOCAL] Loading " .. id .. "..."
+		nowPlayingLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+
+		task.delay(1, function()
+			if currentSound == s and s.IsPlaying then
+				nowPlayingLabel.Text = "♪ [LOCAL] Now playing: " .. id
+				nowPlayingLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+			elseif currentSound == s then
+				nowPlayingLabel.Text = "♪ [LOCAL] Failed to load " .. id
+				nowPlayingLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+			end
+		end)
+	else
+		sendMusic("load", { id = id })
+		nowPlayingLabel.Text = "♪ [SERVER] Requesting " .. id .. "..."
+		nowPlayingLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+		task.delay(1, function()
+			nowPlayingLabel.Text = "♪ [SERVER] Now playing: " .. id
+			nowPlayingLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+		end)
+	end
+
+	isPlaying = true
+	playPauseBtn.Text = "[ PAUSE ]"
+end
+
+-- // Build danh sách bài hát
+for i, track in ipairs(PLAYLIST) do
+	local trackBtn = Instance.new("TextButton")
+	trackBtn.Size = UDim2.new(1, -4, 0, 24)
+	trackBtn.Position = UDim2.new(0, 2, 0, (i - 1) * 26)
+	trackBtn.Text = "♪ " .. track.name
+	trackBtn.Font = Enum.Font.Code
+	trackBtn.TextSize = 12
+	trackBtn.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
+	trackBtn.BorderColor3 = Color3.fromRGB(150, 150, 150)
+	trackBtn.BorderSizePixel = 1
+	trackBtn.TextXAlignment = Enum.TextXAlignment.Left
+	trackBtn.TextColor3 = Color3.new(0, 0, 0)
+	trackBtn.Parent = playlistFrame
+
+	trackBtn.MouseButton1Click:Connect(function()
+		musicIdBox.Text = track.id
+		loadTrack(track.id)
+	end)
+end
+
+-- // Mode toggle
+modeBtn.MouseButton1Click:Connect(function()
+	if musicMode == "local" then
+		musicMode = "server"
+		modeBtn.Text = "[ MODE: SERVER ]"
+		stopLocalSound()
+	else
+		musicMode = "local"
+		modeBtn.Text = "[ MODE: LOCAL ]"
+		sendMusic("stop")
+	end
+	isPlaying = false
+	playPauseBtn.Text = "[ PLAY ]"
+	nowPlayingLabel.Text = "♪ Mode switched to " .. musicMode:upper() .. "."
+	nowPlayingLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+end)
+
+loadMusicBtn.MouseButton1Click:Connect(function()
+	local rawId = musicIdBox.Text:gsub("%s", "")
+	local id = rawId:match("(%d+)")
+	loadTrack(id)
+end)
+
+playPauseBtn.MouseButton1Click:Connect(function()
+	if musicMode == "local" then
+		if not currentSound then
+			nowPlayingLabel.Text = "♪ No track loaded."
+			nowPlayingLabel.TextColor3 = Color3.fromRGB(255, 180, 0)
+			return
+		end
+		if currentSound.IsPlaying then
+			currentSound:Pause()
+			playPauseBtn.Text = "[ PLAY ]"
+			isPlaying = false
+		else
+			currentSound:Resume()
+			playPauseBtn.Text = "[ PAUSE ]"
+			isPlaying = true
+		end
+	else
+		if isPlaying then
+			sendMusic("pause")
+			playPauseBtn.Text = "[ PLAY ]"
+			isPlaying = false
+		else
+			sendMusic("play")
+			playPauseBtn.Text = "[ PAUSE ]"
+			isPlaying = true
+		end
+	end
+end)
+
+stopMusicBtn.MouseButton1Click:Connect(function()
+	if musicMode == "local" then
+		stopLocalSound()
+	else
+		sendMusic("stop")
+	end
+	isPlaying = false
+	playPauseBtn.Text = "[ PLAY ]"
+	nowPlayingLabel.Text = "♪ Stopped."
+	nowPlayingLabel.TextColor3 = Color3.fromRGB(180, 100, 0)
+end)
+
+volDownBtn.MouseButton1Click:Connect(function()
+	currentVolume = math.clamp(currentVolume - 0.1, 0, 1)
+	volLabel.Text = math.floor(currentVolume * 100) .. "%"
+	if musicMode == "local" and currentSound then
+		currentSound.Volume = currentVolume
+	elseif musicMode == "server" then
+		sendMusic("volume", { volume = currentVolume })
+	end
+end)
+
+volUpBtn.MouseButton1Click:Connect(function()
+	currentVolume = math.clamp(currentVolume + 0.1, 0, 1)
+	volLabel.Text = math.floor(currentVolume * 100) .. "%"
+	if musicMode == "local" and currentSound then
+		currentSound.Volume = currentVolume
+	elseif musicMode == "server" then
+		sendMusic("volume", { volume = currentVolume })
+	end
+end)
+
+-- // Toggle mở/đóng khu Music Player (thanh đẹp, đổi mũi tên + resize frame)
+local musicExpanded = false
+musicToggleBar.MouseButton1Click:Connect(function()
+	musicExpanded = not musicExpanded
+	musicContainer.Visible = musicExpanded
+	musicToggleBar.Text = (musicExpanded and " ▲  MUSIC PLAYER" or " ▼  MUSIC PLAYER")
+
+	local targetH = musicExpanded and FRAME_H_EXPANDED or FRAME_H_COLLAPSED
+	createTween(frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+		Size = UDim2.new(0, 340, 0, targetH),
+	}):Play()
+end)
+
+--------------------------------------------------------------------------------
+-- TOGGLE / CLOSE
+--------------------------------------------------------------------------------
+toggleButton.MouseButton1Click:Connect(function()
+	frame.Visible = not frame.Visible
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+	frame.Visible = false
+end)
+
+-- // Button Logic
+injectButton.MouseButton1Click:Connect(function()
+	injectButton.Text = "[ OK! ]"
+	injectButton.TextColor3 = Color3.fromRGB(0, 128, 0)
+	executeButton.Active = false
+	clearButton.Active = false
+	executeButton.AutoButtonColor = false
+	clearButton.AutoButtonColor = false
+	statusLabel.Text = "> Injected successfully."
+	statusLabel.TextColor3 = Color3.fromRGB(0, 128, 0)
+
+	StarterGui:SetCore("SendNotification", {
+		Title = "ERROR422",
+		Text = "FE BYPASS BY ERROR422MINECRAFT5",
+		Duration = 5,
+	})
+end)
+
+clearButton.MouseButton1Click:Connect(function()
+	inputBox.Text = ""
+	statusLabel.Text = "> Cleared."
+	statusLabel.TextColor3 = Color3.fromRGB(180, 100, 0)
+end)
+
+executeButton.MouseButton1Click:Connect(function()
+	local scriptText = inputBox.Text
+	local assetId = scriptText:match("require%s*%(?%s*(%d+)%s*%)?")
+
+	if assetId then
+		statusLabel.Text = "> Loading asset " .. assetId .. "..."
+		statusLabel.TextColor3 = Color3.fromRGB(0, 0, 200)
+
+		local success, result = pcall(function()
+			local objects = game:GetObjects("rbxassetid://" .. assetId)
+			local obj = objects[1]
+			if obj then
+				obj.Parent = playerGui
+				if obj:IsA("ModuleScript") then
+					local modSuccess, modResult = pcall(require, obj)
+					if not modSuccess then
+						warn("Error requiring module:", modResult)
+						statusLabel.Text = "> Error: " .. tostring(modResult):sub(1, 40)
+						statusLabel.TextColor3 = Color3.fromRGB(180, 0, 0)
+					else
+						statusLabel.Text = "> Module executed OK."
+						statusLabel.TextColor3 = Color3.fromRGB(0, 128, 0)
+					end
+				end
+			end
+		end)
+		if not success then
+			warn("Error loading asset:", result)
+			statusLabel.Text = "> Failed to load asset."
+			statusLabel.TextColor3 = Color3.fromRGB(180, 0, 0)
+		end
+	else
+		statusLabel.Text = "> Invalid syntax."
+		statusLabel.TextColor3 = Color3.fromRGB(180, 0, 0)
+		warn("Invalid require() syntax.")
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- STIGMAN FROUD GUI (Animation - giữ nguyên 100% so với bản gốc)
+--------------------------------------------------------------------------------
+local StigmanFroud = Instance.new("ScreenGui")
+StigmanFroud.Name = "StigmanFroud"
+StigmanFroud.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+StigmanFroud.DisplayOrder = 999
+StigmanFroud.ResetOnSpawn = false
+StigmanFroud.Parent = playerGui
+
+local trajectory = Instance.new("ImageLabel")
+trajectory.Name = "trajectory"
+trajectory.BackgroundTransparency = 1
+trajectory.Position = UDim2.new(0.45430705, 0, 0.430432826, 0)
+trajectory.Size = UDim2.new(0, 110, 0, 110)
+trajectory.Image = "http://www.roblox.com/asset/?id=7102118272"
+trajectory.SliceScale = 3
+trajectory.Parent = StigmanFroud
+
+local R = Instance.new("ImageLabel")
+R.Name = "R"
+R.BackgroundTransparency = 1
+R.Position = UDim2.new(0.45430705, 0, 0.430432826, 0)
+R.Size = UDim2.new(0, 110, 0, 110)
+R.ZIndex = 3
+R.Image = "http://www.roblox.com/asset/?id=7102117818"
+R.SliceScale = 3
+R.Parent = StigmanFroud
+
+local Earth = Instance.new("ImageLabel")
+Earth.Name = "Earth"
+Earth.BackgroundTransparency = 1
+Earth.BorderSizePixel = 0
+Earth.Position = UDim2.new(0.404999346, 0, 0.406818181, 0)
+Earth.Size = UDim2.new(0, 20, 0, 20)
+Earth.ZIndex = 4
+Earth.Image = "rbxassetid://78137783929126"
+Earth.Parent = R
+
+local Green = Instance.new("ImageLabel")
+Green.Name = "Green"
+Green.BackgroundTransparency = 1
+Green.BorderSizePixel = 0
+Green.Position = UDim2.new(0.00499999989, 0, 0.824999988, 0)
+Green.Size = UDim2.new(0, 110, 0, 110)
+Green.ZIndex = 6
+Green.Image = "rbxassetid://75554667916597"
+Green.ImageTransparency = 1
+Green.Parent = StigmanFroud
+
+--------------------------------------------------------------------------------
+-- ANIMATIONS (giữ nguyên 100% so với bản gốc)
+--------------------------------------------------------------------------------
+local MOVE_START = UDim2.new(0.451, 0, 0.395, 0)
+local MOVE_END   = UDim2.new(0.005, 0, 0.619, 0)
+
+task.spawn(function()
+	tweenPos(trajectory, MOVE_START, "Linear", "Out", 0.4)
+	task.wait(3)
+	tweenPos(trajectory, MOVE_END, "Sine", "Out", 0.7)
+	while true do
+		task.wait(0.01)
+		trajectory.Rotation += 0.3
+	end
+end)
+
+task.spawn(function()
+	local angle = 0
+	local originPos = Earth.Position
+	local distance = 55
+	while true do
+		task.wait()
+		angle += 0.02
+		Earth.Position = originPos + UDim2.new(0, math.cos(angle) * distance, 0, math.sin(angle) * distance)
+	end
+end)
+
+task.spawn(function()
+	tweenPos(R, MOVE_START, "Linear", "Out", 0.4)
+	task.wait(3)
+	tweenPos(R, MOVE_END, "Sine", "Out", 0.7)
+end)
+
+task.spawn(function()
+	local tweenInfo = TweenInfo.new(0.5)
+	task.wait(2)
+	tweenPos(Green, MOVE_START, "Linear", "Out", 0.4)
+	task.wait(3)
+	tweenPos(Green, MOVE_END, "Sine", "Out", 0.7)
+	while true do
+		createTween(Green, tweenInfo, { ImageTransparency = 0 }):Play() task.wait(0.3)
+		createTween(Green, tweenInfo, { ImageTransparency = 1 }):Play() task.wait(0.3)
+		createTween(Green, tweenInfo, { ImageTransparency = 0 }):Play() task.wait(0.3)
+		createTween(Green, tweenInfo, { ImageTransparency = 1 }):Play() task.wait(4)
+	end
+end)
+
+task.spawn(function()
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(game.PlaceId)
+	end)
+	if ok and info then
+		print("Loaded At", info.Name)
+	end
+	task.wait(0.1)
+	print("Welcome,", player.Name)
+end)
